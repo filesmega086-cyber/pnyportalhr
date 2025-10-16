@@ -3,8 +3,11 @@
 export const DEPARTMENTS = [
   "Accounts",
   "Production",
-  "Marketing",        // (already in standard, but we keep here for grouping UX)
-  "Arfa Management",
+  "Marketing",       
+  "Academics",       
+  "Sales",        
+  "Janitorial",        
+  "Management",
   "IMM Team",
   "Sales Team",
   "BD",
