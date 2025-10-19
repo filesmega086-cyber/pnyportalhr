@@ -146,7 +146,7 @@ export default function useEmployees() {
     const before = employees.find((u) => u._id === id);
     patchLocal(id, { isApproved });
     try {
-      await api.patch(`/api/users/${id}`, { isApproved });
+      await api.patch(`/api/users/edit/${id}`, { isApproved });
       toast.success(isApproved ? "Approved" : "Rejected");
     } catch (err) {
       patchLocal(id, { isApproved: before?.isApproved ?? false });

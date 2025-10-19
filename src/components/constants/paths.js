@@ -9,4 +9,5 @@ export const paths = {
   // Admin
   USERS: "users",
   MARK_ATTENDANCE: "mark-attendance",
+  LEAVE_REQUESTS: "leaves",
 };

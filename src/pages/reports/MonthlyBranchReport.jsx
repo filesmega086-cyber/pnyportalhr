@@ -125,7 +125,7 @@ export default function MonthlyBranchReport() {
 
     cursorY = doc.lastAutoTable.finalY + 24;
 
-    // manual page break before next section if not enough space for signature later
+    // manual page break before next section if not enough space for approval block later
     if (idx < grouped.sections.length - 1 && cursorY > pageH - 180) {
       doc.addPage();
       pageNo += 1;
@@ -134,7 +134,7 @@ export default function MonthlyBranchReport() {
     }
   });
 
-  // signature block at end (static)
+  // approval summary block at end
   const sigHeight = 120;
   if (cursorY + sigHeight > pageH - margin) {
     doc.addPage();
@@ -144,29 +144,18 @@ export default function MonthlyBranchReport() {
   }
   const blockTop = Math.max(cursorY, pageH - margin - sigHeight);
   const blockLeft = margin + 24;
-  const blockWidth = pageW - (margin + 24) * 2;
-  const colWidth = (blockWidth - 24) / 2;
-
   doc.setFontSize(12);
   doc.setTextColor(45);
-  doc.text("Approval Signatures", blockLeft, blockTop);
-
-  const hrX = blockLeft;
-  const ceoX = blockLeft + colWidth + 24;
-  const lineY = blockTop + 70;
-
-  doc.setDrawColor(225, 230, 240);
-  doc.roundedRect(hrX, blockTop + 12, colWidth, 80, 6, 6);
-  doc.roundedRect(ceoX, blockTop + 12, colWidth, 80, 6, 6);
+  doc.text("Approval Records", blockLeft, blockTop);
 
   doc.setFontSize(10);
   doc.setTextColor(90);
-  doc.text("HR — PNY PORTAL", hrX + 12, blockTop + 28);
-  doc.text("CEO — PNY PORTAL", ceoX + 12, blockTop + 28);
-
-  doc.setDrawColor(170, 175, 185);
-  doc.line(hrX + 24, lineY, hrX + colWidth - 24, lineY);
-  doc.line(ceoX + 24, lineY, ceoX + colWidth - 24, lineY);
+  doc.text(
+    "Approvals are logged digitally with employee submission and team lead decision timestamps.",
+    blockLeft,
+    blockTop + 24,
+    { maxWidth: pageW - blockLeft * 2 }
+  );
 
   doc.setFontSize(9);
   doc.setTextColor(120);

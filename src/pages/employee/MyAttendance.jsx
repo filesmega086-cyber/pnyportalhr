@@ -4,6 +4,7 @@ import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@
 import { Table, TableHeader, TableRow, TableHead, TableBody, TableCell } from "@/components/ui/table";
 import { ORDER, LABELS, CHIP } from "@/components/constants/attendance";
 import { cn } from "@/lib/utils";
+import ModernPagination from "@/components/ui/pagination";
 import {
   Sparkles,
   CheckCircle2,
@@ -78,6 +79,8 @@ const STAT_META = {
   }
 };
 
+const PAGE_SIZE = 10;
+
 function formatDate(isoLike) {
   const date = new Date(isoLike);
   if (Number.isNaN(date.getTime())) {
@@ -87,7 +90,17 @@ function formatDate(isoLike) {
   return date.toLocaleDateString(undefined, {
     year: "numeric",
     month: "short",
-    day: "2-digit",
+    day: "2-digit"
+  });
+}
+
+function formatDayName(isoLike) {
+  const date = new Date(isoLike);
+  if (Number.isNaN(date.getTime())) {
+    return "-";
+  }
+
+  return date.toLocaleDateString(undefined, {
     weekday: "short"
   });
 }
@@ -104,6 +117,59 @@ export default function MyAttendance() {
     trackedTotal > 0 ? Math.round(((stats?.present ?? 0) / trackedTotal) * 100) : null;
 
   const periodLabel = `${activeMonth?.label ?? "Month"} ${year}`;
+  const sortedDays = React.useMemo(() => {
+    if (!days || days.length === 0) return [];
+    return [...days].sort((a, b) => {
+      const aTime = new Date(a.date).getTime();
+      const bTime = new Date(b.date).getTime();
+      if (Number.isNaN(aTime) || Number.isNaN(bTime)) return 0;
+      return bTime - aTime;
+    });
+  }, [days]);
+  const latestEntry = sortedDays[0];
+  const earliestEntry = sortedDays.length > 1 ? sortedDays[sortedDays.length - 1] : sortedDays[0];
+  const dominantStatus = React.useMemo(() => {
+    if (!stats) return null;
+    let winningKey = null;
+    let winningValue = 0;
+    ORDER.forEach((key) => {
+      const value = stats[key] ?? 0;
+      if (value > winningValue) {
+        winningKey = key;
+        winningValue = value;
+      }
+    });
+    return winningKey ? { key: winningKey, count: winningValue } : null;
+  }, [stats]);
+  const dominantMeta = dominantStatus ? STAT_META[dominantStatus.key] ?? null : null;
+  const dominantLabel = dominantStatus ? LABELS[dominantStatus.key] ?? dominantStatus.key : null;
+  const latestStatusLabel = latestEntry ? LABELS[latestEntry.status] ?? latestEntry.status : null;
+  const latestStatusMeta = latestEntry ? STAT_META[latestEntry.status] ?? null : null;
+  const earliestStatusMeta = earliestEntry ? STAT_META[earliestEntry.status] ?? null : null;
+  const earliestStatusLabel = earliestEntry ? LABELS[earliestEntry.status] ?? earliestEntry.status : null;
+  const DominantIcon = dominantMeta?.icon ?? BadgeInfo;
+  const LatestIcon = latestStatusMeta?.icon ?? BadgeInfo;
+  const EarliestIcon = earliestStatusMeta?.icon ?? BadgeInfo;
+
+  const [currentPage, setCurrentPage] = React.useState(1);
+  const totalEntries = days.length;
+  const totalPages = totalEntries > 0 ? Math.ceil(totalEntries / PAGE_SIZE) : 1;
+
+  React.useEffect(() => {
+    setCurrentPage(1);
+  }, [year, month]);
+
+  React.useEffect(() => {
+    if (currentPage > totalPages) {
+      setCurrentPage(totalPages);
+    }
+  }, [currentPage, totalPages]);
+
+  const pageStartIndex = (currentPage - 1) * PAGE_SIZE;
+  const paginatedDays =
+    totalEntries === 0 ? [] : days.slice(pageStartIndex, pageStartIndex + PAGE_SIZE);
+  const startEntryOnPage = totalEntries === 0 ? 0 : pageStartIndex + 1;
+  const endEntryOnPage = totalEntries === 0 ? 0 : pageStartIndex + paginatedDays.length;
 
   return (
     <div className="relative space-y-6">
@@ -220,70 +286,130 @@ export default function MyAttendance() {
         })}
       </section>
 
-      <section className="rounded-3xl border border-white/10 bg-card/80 shadow-[0_25px_50px_-24px_rgba(15,23,42,0.55)] backdrop-blur-xl">
+      <section className="rounded-3xl border border-white/10 bg-card/90 shadow-[0_28px_55px_-22px_rgba(15,23,42,0.55)] backdrop-blur-xl">
+        <div className="flex flex-col gap-4 border-b border-white/10 bg-white/5 px-6 py-6 sm:flex-row sm:items-end sm:justify-between sm:px-8">
+          <div className="space-y-1">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.25em] text-muted-foreground">
+              Daily Overview
+            </p>
+            <h2 className="text-xl font-semibold text-foreground sm:text-2xl">Attendance ledger</h2>
+            <p className="text-sm text-muted-foreground">
+              Detailed activity log for {periodLabel}
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2 text-xs">
+            <span className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-background/70 px-3 py-2 text-foreground shadow-sm backdrop-blur">
+              <span className="h-2 w-2 rounded-full bg-primary" />
+              {trackedTotal > 0
+                ? `${trackedTotal} tracked day${trackedTotal === 1 ? "" : "s"}`
+                : "No tracked days yet"}
+            </span>
+            <span className="inline-flex items-center gap-2 rounded-full border border-primary/30 bg-primary/15 px-3 py-2 font-medium text-primary shadow-sm backdrop-blur">
+              <Sparkles className="h-3 w-3" />
+              {presenceRate !== null ? `${presenceRate}% presence` : "Awaiting records"}
+            </span>
+          </div>
+        </div>
         {loading ? (
           <div className="space-y-3 p-6">
             {range(6).map((row) => (
               <div
                 key={row}
-                className="h-10 rounded-xl border border-dashed border-white/10 bg-white/5 animate-pulse"
+                className="h-12 rounded-2xl border border-dashed border-white/10 bg-white/5 animate-pulse"
               />
             ))}
           </div>
         ) : error ? (
           <div className="p-6 text-sm text-rose-500">{error}</div>
         ) : (
-          <div className="overflow-x-auto">
-            <Table className="min-w-[720px]">
-              <TableHeader className="sticky top-0 z-10 bg-background/90 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-                <TableRow>
-                  <TableHead className="w-[240px] text-muted-foreground">Date</TableHead>
-                  <TableHead className="w-[240px] text-muted-foreground">Status</TableHead>
-                  <TableHead className="text-muted-foreground">Note</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {days.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={3} className="py-12 text-center text-sm text-muted-foreground">
-                      No attendance recorded for this period.
-                    </TableCell>
+          <div className="flex flex-col">
+            <div className="overflow-x-auto">
+              <Table className="min-w-[860px] border-separate border-spacing-y-3 text-sm">
+                <TableHeader className="sticky top-0 z-10">
+                  <TableRow className="bg-background/80 text-[11px] uppercase tracking-[0.25em] text-muted-foreground backdrop-blur supports-[backdrop-filter]:bg-background/60 [&>th]:border [&>th]:border-white/10 [&>th]:bg-white/5 [&>th]:px-6 [&>th]:py-4 [&>th]:font-semibold [&>th:first-child]:rounded-l-2xl [&>th:last-child]:rounded-r-2xl">
+                    <TableHead className="w-[240px]">Date</TableHead>
+                    <TableHead className="w-[240px]">Status</TableHead>
+                    <TableHead>Note</TableHead>
                   </TableRow>
-                ) : (
-                  days.map((day, index) => {
-                    const statusLabel = LABELS[day.status] ?? day.status;
-                    const pillClasses = CHIP[day.status] ?? "border-foreground/20 text-foreground";
+                </TableHeader>
+                <TableBody className="[&>tr:hover]:bg-transparent">
+                  {days.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={3} className="py-12 text-center text-sm text-muted-foreground">
+                        No attendance recorded for this period.
+                      </TableCell>
+                    </TableRow>
+                  ) : (
+                    paginatedDays.map((day, index) => {
+                      const statusLabel = LABELS[day.status] ?? day.status;
+                      const pillClasses = CHIP[day.status] ?? "border-foreground/20 text-foreground";
+                      const meta =
+                        STAT_META[day.status] ?? {
+                          helper: "Attendance insight",
+                          icon: BadgeInfo,
+                          iconColor: "text-primary"
+                        };
+                      const StatusIcon = meta.icon ?? BadgeInfo;
+                      const trimmedNote = day.note?.trim();
 
-                    return (
-                      <TableRow
-                        key={`${day.date}-${index}`}
-                        className="border-white/5 transition-colors hover:bg-muted/40"
-                      >
-                        <TableCell className="font-medium">{formatDate(day.date)}</TableCell>
-                        <TableCell>
-                          <span
-                            className={cn(
-                              "inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-medium",
-                              pillClasses
+                      return (
+                        <TableRow
+                          key={`${day.date}-${index}`}
+                          className="group overflow-hidden rounded-2xl border border-white/10 bg-white/5 backdrop-blur transition-all duration-200 hover:-translate-y-0.5 hover:border-primary/40 hover:bg-primary/10 hover:shadow-[0_24px_48px_-26px_rgba(79,70,229,0.4)]"
+                        >
+                          <TableCell className="whitespace-nowrap px-6 py-5 align-middle">
+                            <div className="flex flex-col">
+                              <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                                {formatDayName(day.date)}
+                              </span>
+                              <span className="text-sm font-semibold text-foreground">
+                                {formatDate(day.date)}
+                              </span>
+                            </div>
+                          </TableCell>
+                          <TableCell className="px-6 py-5 align-middle">
+                            <div className="flex flex-col gap-2">
+                              <span
+                                className={cn(
+                                  "inline-flex items-center gap-2 self-start rounded-full border px-3 py-1.5 text-xs font-semibold shadow-sm backdrop-blur",
+                                  pillClasses
+                                )}
+                              >
+                                <StatusIcon className="h-3.5 w-3.5 opacity-80" />
+                                {statusLabel}
+                              </span>
+                              {meta.helper && (
+                                <span className="text-xs text-muted-foreground">{meta.helper}</span>
+                              )}
+                            </div>
+                          </TableCell>
+                          <TableCell className="px-6 py-5 align-middle text-sm text-muted-foreground">
+                            {trimmedNote ? (
+                              <span className="inline-flex max-w-[360px] items-start gap-2 rounded-2xl border border-white/10 bg-white/5 px-3 py-2">
+                                <BadgeInfo className="mt-0.5 h-4 w-4 opacity-60" />
+                                <span className="text-left text-sm leading-snug">{trimmedNote}</span>
+                              </span>
+                            ) : (
+                              <span className="text-muted-foreground/70">-</span>
                             )}
-                          >
-                            <span className="h-1.5 w-1.5 rounded-full bg-current" />
-                            {statusLabel}
-                          </span>
-                        </TableCell>
-                        <TableCell className="text-sm text-muted-foreground">
-                          {day.note?.trim() ? day.note : "-"}
-                        </TableCell>
-                      </TableRow>
-                    );
-                  })
-                )}
-              </TableBody>
-            </Table>
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })
+                  )}
+                </TableBody>
+              </Table>
+            </div>
+            <ModernPagination
+              currentPage={currentPage}
+              totalItems={totalEntries}
+              pageSize={PAGE_SIZE}
+              onPageChange={setCurrentPage}
+              className="rounded-b-3xl"
+            />
           </div>
         )}
       </section>
     </div>
   );
 }
-

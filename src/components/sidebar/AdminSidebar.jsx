@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { NavLink, useNavigate } from "react-router-dom";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/context/AuthContext";
-import { LayoutDashboard, Settings, LogOut } from "lucide-react";
+import { LayoutDashboard, Settings, LogOut, NotebookPen, FileText } from "lucide-react";
 
 const groups = [
   {
@@ -11,6 +11,8 @@ const groups = [
       { to: "/admin", icon: LayoutDashboard, label: "Dashboard" },
       { to: "/admin/users", icon: LayoutDashboard, label: "Users" },
       { to: "/admin/mark-attendance", icon: LayoutDashboard, label: "Mark Attendance" },
+      { to: "/admin/leaves", icon: NotebookPen, label: "Leave Requests" },
+      { to: "/admin/leave-report", icon: FileText, label: "Leave Reports" },
       { to: "/admin/monthly-report", icon: LayoutDashboard, label: "Monthly Report" },
     ],
   },

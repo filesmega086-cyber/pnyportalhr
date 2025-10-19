@@ -27,11 +27,12 @@ import {
   CalendarClock,
   Headphones
 } from "lucide-react";
+import { FileText } from "lucide-react";
 
-const NAV = [
-  { href: "/employee", label: "Dashboard", icon: LayoutDashboard },
-  // { href: "/employee/attendance", label: "My Attendance", icon: CalendarCheck2 },
-  // { href: "/employee/profile", label: "Profile", icon: UserRound }
+const BASE_NAV = [
+  { href: "/employee", label: "My Attendance", icon: CalendarCheck2 },
+  { href: "/employee/leaves", label: "Leave Centre", icon: NotebookPen },
+  { href: "/employee/leave-report", label: "Leave Reports", icon: FileText },
 ];
 
 const QUICK_METRICS = [
@@ -165,6 +166,15 @@ function SidebarItem({ href, label, icon, collapsed }) {
 export default function EmployeeLayout({ title = "Employee" }) {
   const { user, logout } = useAuth();
   const [collapsed, setCollapsed] = React.useState(false);
+  const navItems = React.useMemo(() => {
+    const items = [...BASE_NAV];
+    items.splice(2, 0, {
+      href: "/employee/team-lead/review",
+      label: user?.isTeamLead ? "Team Lead Review" : "Team Lead Access",
+      icon: ShieldCheck,
+    });
+    return items;
+  }, [user?.isTeamLead]);
 
   React.useEffect(() => {
     const onKey = (event) => {
@@ -216,7 +226,7 @@ export default function EmployeeLayout({ title = "Employee" }) {
                       </div>
                     </div>
                     <nav className="space-y-2">
-                      {NAV.map((item) => (
+                      {navItems.map((item) => (
                         <SidebarItem key={item.href} {...item} collapsed={false} />
                       ))}
                     </nav>
@@ -299,7 +309,7 @@ export default function EmployeeLayout({ title = "Employee" }) {
             </div>
 
             <nav className="space-y-2">
-              {NAV.map((item) => (
+              {navItems.map((item) => (
                 <SidebarItem key={item.href} {...item} collapsed={collapsed} />
               ))}
             </nav>
