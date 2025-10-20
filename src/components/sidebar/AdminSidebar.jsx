@@ -43,7 +43,9 @@ export default function Sidebar() {
         <img
           src={
             user?.profileImageUrl
-              ? `${import.meta.env.VITE_API_BASE || ""}${user.profileImageUrl}`
+              ? user.profileImageUrl.startsWith("http")
+                ? user.profileImageUrl
+                : `${import.meta.env.VITE_API_BASE || ""}${user.profileImageUrl}`
               : "/default-avatar.png"
           }
           alt="User Avatar"

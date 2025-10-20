@@ -5,12 +5,15 @@ import { RouterProvider } from "react-router-dom";
 import { Toaster } from "@/components/ui/sonner";
 import router from "./components/router";
 import { AuthProvider } from "./context/AuthContext";
+import { NotificationsProvider } from "./context/NotificationsContext";
 
 createRoot(document.getElementById("root")).render(
   <>
     <AuthProvider>
-      <Toaster richColors position="top-right" />
-      <RouterProvider router={router} />
+      <NotificationsProvider>
+        <Toaster richColors position="top-right" />
+        <RouterProvider router={router} />
+      </NotificationsProvider>
     </AuthProvider>
   </>
 );

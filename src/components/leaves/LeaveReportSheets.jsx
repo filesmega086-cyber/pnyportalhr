@@ -57,7 +57,7 @@ const formatTeamLeadStatus = (value) => {
     case "approved":
       return "Approved";
     case "rejected":
-      return "Returned";
+      return "Rejected";
     case "pending":
     case undefined:
     case null:
@@ -67,19 +67,25 @@ const formatTeamLeadStatus = (value) => {
   }
 };
 
+const LEAVE_TYPE_LABELS = {
+  full: "Full",
+  short: "Short",
+  half: "Half",
+};
+
+const LEAVE_CATEGORY_LABELS = {
+  casual: "Casual",
+  medical: "Medical",
+  annual: "Annual",
+  sick: "Sick",
+  unpaid: "Unpaid",
+  other: "Other",
+};
+
 const SummaryCard = ({ label, value }) => (
   <div className="rounded border border-black/40 p-3 text-center">
     <p className="text-[10px] uppercase text-slate-500">{label}</p>
     <p className="text-lg font-bold text-black">{formatMetric(value)}</p>
-  </div>
-);
-
-const Choice = ({ label, active }) => (
-  <div className="flex items-center gap-2 text-xs">
-    <span className="text-sm font-semibold leading-none">
-      {active ? "\u2713" : ""}
-    </span>
-    <span>{label}</span>
   </div>
 );
 
@@ -129,23 +135,23 @@ function LeaveFormView({ user, leave, index, annualAllowance }) {
           <p className="text-[10px] font-semibold uppercase text-slate-700">
             Leave Type
           </p>
-          <Choice label="Full" active={leave.leaveType === "full"} />
-          <Choice label="Short" active={leave.leaveType === "short"} />
-          <Choice label="Half" active={leave.leaveType === "half"} />
+          <p className="text-sm font-semibold text-black">
+            {LEAVE_TYPE_LABELS[leave.leaveType] ||
+              (leave.leaveType
+                ? leave.leaveType.charAt(0).toUpperCase() + leave.leaveType.slice(1)
+                : "N/A")}
+          </p>
         </div>
         <div className="space-y-1">
           <p className="text-[10px] font-semibold uppercase text-slate-700">
             Leave Category
           </p>
-          <Choice label="Casual" active={leave.leaveCategory === "casual"} />
-          <Choice
-            label="Medical"
-            active={leave.leaveCategory === "medical"}
-          />
-          <Choice label="Annual" active={leave.leaveCategory === "annual"} />
-          <Choice label="Sick" active={leave.leaveCategory === "sick"} />
-          <Choice label="Unpaid" active={leave.leaveCategory === "unpaid"} />
-          <Choice label="Other" active={leave.leaveCategory === "other"} />
+          <p className="text-sm font-semibold text-black">
+            {LEAVE_CATEGORY_LABELS[leave.leaveCategory] ||
+              (leave.leaveCategory
+                ? leave.leaveCategory.charAt(0).toUpperCase() + leave.leaveCategory.slice(1)
+                : "N/A")}
+          </p>
         </div>
       </div>
 

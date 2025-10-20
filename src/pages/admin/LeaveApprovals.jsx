@@ -23,6 +23,7 @@ import {
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { cn } from "@/lib/utils";
 import api from "@/lib/axios";
 import { toast } from "sonner";
@@ -42,13 +43,13 @@ const TEAM_LEAD_FILTERS = [
   { value: "all", label: "All team lead states" },
   { value: "pending", label: "Team lead pending" },
   { value: "approved", label: "Team lead approved" },
-  { value: "rejected", label: "Team lead returned" },
+  { value: "rejected", label: "Team lead rejected" },
 ];
 
 const teamLeadStatusLabels = {
   pending: "Pending",
   approved: "Approved",
-  rejected: "Returned",
+  rejected: "Rejected",
 };
 
 const teamLeadStatusTone = {
@@ -79,7 +80,12 @@ const emptyHrDraft = {
   decisionForForm: "not_applicable",
 };
 
-const defaultAllowance = { allowed: 12, used: 0, remaining: 12 };
+const defaultAllowance = { allowed: 12, used: 0, remaining: 12, monthlyUsed: 0 };
+
+function toNumberOrDefault(value, fallback) {
+  const num = Number(value);
+  return Number.isFinite(num) ? num : fallback;
+}
 
 function formatDatetimeLocal(value) {
   if (!value) return "";
@@ -101,21 +107,45 @@ function buildHrDraft(leave) {
 }
 
 function buildAllowance(leave) {
-  const source = leave?.monthlyAllowance || leave?.hrSection?.monthlyAllowance;
-  if (source) {
-    return {
-      allowed: source.allowed ?? defaultAllowance.allowed,
-      used: source.used ?? 0,
-      remaining: source.remaining ?? defaultAllowance.remaining,
-    };
+  const source =
+    leave?.annualAllowance ||
+    leave?.hrSection?.annualAllowance ||
+    leave?.monthlyAllowance ||
+    leave?.hrSection?.monthlyAllowance;
+
+  if (!source) {
+    return { ...defaultAllowance };
   }
-  return { ...defaultAllowance };
+
+  const allowed = toNumberOrDefault(source.allowed, defaultAllowance.allowed);
+  const used = toNumberOrDefault(source.used, defaultAllowance.used);
+  const remaining = toNumberOrDefault(
+    source.remaining,
+    Math.max(allowed - used, 0)
+  );
+
+  return {
+    allowed,
+    used,
+    remaining,
+    monthlyUsed: defaultAllowance.monthlyUsed,
+  };
 }
 
 function formatAllowance(value) {
   const num = Number(value ?? 0);
   if (Number.isNaN(num)) return "0";
   return Number.isInteger(num) ? String(num) : num.toFixed(2);
+}
+
+function resolveImageSrc(path) {
+  if (!path) return null;
+  if (/^https?:\/\//i.test(path)) {
+    return path;
+  }
+  const base = (import.meta.env.VITE_API_BASE || "").replace(/\/$/, "");
+  const normalizedPath = path.startsWith("/") ? path : `/${path}`;
+  return `${base}${normalizedPath}`;
 }
 
 function formatDateTimeDisplay(value) {
@@ -176,6 +206,7 @@ export default function LeaveApprovals() {
   const [allowanceInfo, setAllowanceInfo] = React.useState(defaultAllowance);
   const [hrUsers, setHrUsers] = React.useState([]);
   const [hrLoading, setHrLoading] = React.useState(false);
+  const allowanceRequestIdRef = React.useRef(0);
 
   const selectedCategoryLabel =
     selected &&
@@ -199,6 +230,19 @@ export default function LeaveApprovals() {
         selected.toDate ? new Date(selected.toDate).toLocaleDateString() : "N/A"
       }`
     : "N/A - N/A";
+  const selectedAvatarUrl =
+    selected?.employeeSnapshot?.profileImageUrl ||
+    selected?.employeeSnapshot?.signatureImageUrl ||
+    null;
+  const selectedAvatarSrc = resolveImageSrc(selectedAvatarUrl);
+  const selectedFullName = selected?.employeeSnapshot?.fullName || "";
+  const selectedAvatarFallback =
+    selectedFullName
+      .split(/\s+/)
+      .filter(Boolean)
+      .slice(0, 2)
+      .map((part) => part[0]?.toUpperCase() || "")
+      .join("") || "EMP";
   const decisionStatusLabel =
     leaveStatusOptions.find((option) => option.value === decision.status)?.label ||
     (decision.status ? decision.status.replace(/_/g, " ") : "Pending");
@@ -252,6 +296,79 @@ export default function LeaveApprovals() {
     setTeamLeadFilter(value);
   }, []);
 
+  async function loadAllowanceDetails(leave) {
+    if (!leave) {
+      setAllowanceInfo({ ...defaultAllowance });
+      return;
+    }
+
+    const baseAllowance = buildAllowance(leave);
+    setAllowanceInfo(baseAllowance);
+
+    const userId = leave.user;
+    const referenceDate = leave.fromDate || leave.createdAt;
+    if (!userId || !referenceDate) {
+      return;
+    }
+
+    const parsed = new Date(referenceDate);
+    if (Number.isNaN(parsed.getTime())) {
+      return;
+    }
+
+    const requestId = allowanceRequestIdRef.current + 1;
+    allowanceRequestIdRef.current = requestId;
+
+    try {
+      const { data } = await api.get("/api/leaves/report/monthly", {
+        params: {
+          userId,
+          year: parsed.getUTCFullYear(),
+          month: parsed.getUTCMonth() + 1,
+        },
+      });
+
+      if (allowanceRequestIdRef.current !== requestId) {
+        return;
+      }
+
+      const allowance = data?.allowance || {};
+      const monthlyApproved = toNumberOrDefault(
+        data?.totals?.approved,
+        baseAllowance.monthlyUsed
+      );
+      const allowed = toNumberOrDefault(
+        allowance.allowed,
+        baseAllowance.allowed
+      );
+      const yearlyUsed = toNumberOrDefault(
+        allowance.used,
+        baseAllowance.used
+      );
+      const remaining = toNumberOrDefault(
+        allowance.remaining,
+        Math.max(allowed - yearlyUsed, 0)
+      );
+
+      setAllowanceInfo({
+        allowed,
+        used: yearlyUsed,
+        remaining,
+        monthlyUsed: monthlyApproved,
+      });
+    } catch (error) {
+      if (allowanceRequestIdRef.current !== requestId) {
+        return;
+      }
+      const message =
+        error?.response?.data?.message ||
+        error?.message ||
+        "Failed to load allowance summary";
+      toast.error(message);
+      setAllowanceInfo(baseAllowance);
+    }
+  }
+
   function openDetail(leave) {
     setSelected(leave);
     setDecision({
@@ -259,8 +376,19 @@ export default function LeaveApprovals() {
       remark: "",
     });
     setHrDraft(buildHrDraft(leave));
-    setAllowanceInfo(buildAllowance(leave));
+    loadAllowanceDetails(leave);
     setDetailOpen(true);
+  }
+
+  function handleDetailOpenChange(nextOpen) {
+    setDetailOpen(nextOpen);
+    if (!nextOpen) {
+      allowanceRequestIdRef.current += 1;
+      setSelected(null);
+      setDecision({ status: "pending", remark: "" });
+      setHrDraft(emptyHrDraft);
+      setAllowanceInfo({ ...defaultAllowance });
+    }
   }
 
   const submitDecision = async () => {
@@ -279,8 +407,7 @@ export default function LeaveApprovals() {
         });
       }
 
-      setDetailOpen(false);
-      setSelected(null);
+      handleDetailOpenChange(false);
       refreshLeaves();
     } catch {
       // errors are surfaced via toast notifications
@@ -482,7 +609,7 @@ export default function LeaveApprovals() {
         </table>
       </div>
 
-      <Dialog open={detailOpen} onOpenChange={setDetailOpen}>
+      <Dialog open={detailOpen} onOpenChange={handleDetailOpenChange}>
         <DialogContent className="max-w-5xl max-h-[95vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Leave details</DialogTitle>
@@ -494,15 +621,27 @@ export default function LeaveApprovals() {
                   <h3 className="text-sm font-semibold text-foreground">
                     Employee snapshot
                   </h3>
-                  <dl className="mt-3 space-y-2 text-sm text-muted-foreground">
-                    <div>
-                      <dt className="font-medium text-foreground">
+                  <div className="mt-3 flex items-center gap-3">
+                    <Avatar className="h-16 w-16 border border-muted">
+                      {selectedAvatarSrc ? (
+                        <AvatarImage
+                          src={selectedAvatarSrc}
+                          alt={`${selectedFullName || "Employee"} profile`}
+                        />
+                      ) : (
+                        <AvatarFallback>{selectedAvatarFallback}</AvatarFallback>
+                      )}
+                    </Avatar>
+                    <div className="space-y-1">
+                      <p className="text-sm font-medium text-foreground">
                         {selected.employeeSnapshot?.fullName || "N/A"}
-                      </dt>
-                      <dd>
+                      </p>
+                      <p className="text-xs text-muted-foreground">
                         ID: {selected.employeeSnapshot?.employeeId || "N/A"}
-                      </dd>
+                      </p>
                     </div>
+                  </div>
+                  <dl className="mt-4 space-y-2 text-sm text-muted-foreground">
                     <div>
                       <dt>Department</dt>
                       <dd>{selected.employeeSnapshot?.department || "N/A"}</dd>
@@ -609,7 +748,7 @@ export default function LeaveApprovals() {
                   </div>
                   <div>
                     <span className="font-medium text-foreground">
-                      Team lead remarks:
+                      Team lead recommendation:
                     </span>{" "}
                     {selected.teamLead?.remarks || "N/A"}
                   </div>
@@ -755,10 +894,10 @@ export default function LeaveApprovals() {
                   </div>
                 </div>
 
-                <div className="rounded-lg border border-dashed border-muted-foreground/30 p-4 grid gap-3 sm:grid-cols-3">
+                <div className="rounded-lg border border-dashed border-muted-foreground/30 p-4 grid gap-3 sm:grid-cols-4">
                   <div>
                     <p className="text-xs font-semibold uppercase text-muted-foreground">
-                      Monthly allowance
+                      Annual allowance
                     </p>
                     <p className="text-lg font-semibold text-foreground">
                       {formatAllowance(allowanceInfo.allowed)}
@@ -766,7 +905,7 @@ export default function LeaveApprovals() {
                   </div>
                   <div>
                     <p className="text-xs font-semibold uppercase text-muted-foreground">
-                      Used this month
+                      Used this year
                     </p>
                     <p className="text-lg font-semibold text-foreground">
                       {formatAllowance(allowanceInfo.used)}
@@ -774,7 +913,15 @@ export default function LeaveApprovals() {
                   </div>
                   <div>
                     <p className="text-xs font-semibold uppercase text-muted-foreground">
-                      Remaining
+                      Approved this month
+                    </p>
+                    <p className="text-lg font-semibold text-foreground">
+                      {formatAllowance(allowanceInfo.monthlyUsed)}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-xs font-semibold uppercase text-muted-foreground">
+                      Remaining this year
                     </p>
                     <p className="text-lg font-semibold text-foreground">
                       {formatAllowance(allowanceInfo.remaining)}
@@ -841,7 +988,7 @@ export default function LeaveApprovals() {
           <DialogFooter>
             <Button
               variant="ghost"
-              onClick={() => setDetailOpen(false)}
+              onClick={() => handleDetailOpenChange(false)}
               type="button"
             >
               Close

@@ -10,6 +10,7 @@ import LeaveRequests from "@/pages/employee/LeaveRequests";
 import TeamLeadApprovals from "@/pages/employee/TeamLeadApprovals";
 import LeaveReports from "@/pages/employee/LeaveReports";
 import UserMonthlyReport from "@/pages/reports/UserMonthlyReport";
+import ProfileCard from "@/pages/employee/ProfileCard";
 
 const employeeRoutes = [
   {
@@ -23,6 +24,7 @@ const employeeRoutes = [
           { path: "team-lead/review", element: <TeamLeadApprovals /> },
           { path: "leave-report", element: <LeaveReports /> },
           { path: "user-monthly", element: <UserMonthlyReport/> },
+          { path: "employee-card", element: <ProfileCard/> },
         ],
       },
     ],

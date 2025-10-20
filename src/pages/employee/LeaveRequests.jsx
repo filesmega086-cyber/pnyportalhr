@@ -27,6 +27,42 @@ const statusTone = {
   on_hold: "bg-sky-100 text-sky-800 border border-sky-200",
 };
 
+const teamLeadStatusTone = {
+  pending: "bg-amber-100 text-amber-800 border border-amber-200",
+  approved: "bg-emerald-100 text-emerald-800 border border-emerald-200",
+  rejected: "bg-rose-100 text-rose-800 border border-rose-200",
+};
+
+const teamLeadStatusLabel = {
+  pending: "Pending",
+  approved: "Approved",
+  rejected: "Rejected",
+};
+
+function parseTimeToMinutes(value) {
+  if (!value || typeof value !== "string") {
+    return null;
+  }
+  const [hourStr, minuteStr] = value.split(":");
+  if (hourStr === undefined || minuteStr === undefined) {
+    return null;
+  }
+  const hours = Number(hourStr);
+  const minutes = Number(minuteStr);
+  if (!Number.isInteger(hours) || !Number.isInteger(minutes)) {
+    return null;
+  }
+  if (hours < 0 || hours > 23 || minutes < 0 || minutes > 59) {
+    return null;
+  }
+  return hours * 60 + minutes;
+}
+
+const halfDaySessionOptions = [
+  { value: "first_half", label: "First Half" },
+  { value: "second_half", label: "Second Half" },
+];
+
 const initialForm = {
   leaveType: "full",
   leaveCategory: "casual",
@@ -34,7 +70,12 @@ const initialForm = {
   toDate: "",
   leaveReason: "",
   durationHours: "",
+  shortLeaveStartTime: "",
+  shortLeaveEndTime: "",
+  halfDaySession: "",
   teamLeadId: "",
+  tasksDuringAbsence: "",
+  backupStaffName: "",
 };
 
 export default function LeaveRequests() {
@@ -104,6 +145,27 @@ export default function LeaveRequests() {
     setDurationDays(null);
   }, [form.fromDate, form.toDate]);
 
+  React.useEffect(() => {
+    setForm((prev) => {
+      const updates = {};
+      if (
+        form.leaveType !== "short" &&
+        (prev.durationHours || prev.shortLeaveStartTime || prev.shortLeaveEndTime)
+      ) {
+        updates.durationHours = "";
+        updates.shortLeaveStartTime = "";
+        updates.shortLeaveEndTime = "";
+      }
+      if (form.leaveType !== "half" && prev.halfDaySession) {
+        updates.halfDaySession = "";
+      }
+      if (!Object.keys(updates).length) {
+        return prev;
+      }
+      return { ...prev, ...updates };
+    });
+  }, [form.leaveType]);
+
   const handleChange = (field) => (event) => {
     const value = event?.target ? event.target.value : event;
     setForm((prev) => ({ ...prev, [field]: value }));
@@ -123,7 +185,17 @@ export default function LeaveRequests() {
       toast.error("Please select the team lead who will review your leave");
       return;
     }
+    if (!form.tasksDuringAbsence.trim()) {
+      toast.error("Please describe the tasks that need cover during your absence");
+      return;
+    }
+    if (!form.backupStaffName.trim()) {
+      toast.error("Please share who will be the primary backup colleague");
+      return;
+    }
     let durationHoursValue = null;
+    let shortLeaveWindow = null;
+    let halfDaySessionValue = null;
     if (form.leaveType === "short") {
       const hours = Number(form.durationHours);
       if (!Number.isFinite(hours) || hours <= 0) {
@@ -134,7 +206,49 @@ export default function LeaveRequests() {
         toast.error("Short leave cannot exceed 2 hours");
         return;
       }
+      const startMinutes = parseTimeToMinutes(form.shortLeaveStartTime);
+      const endMinutes = parseTimeToMinutes(form.shortLeaveEndTime);
+      if (
+        startMinutes === null ||
+        endMinutes === null ||
+        Number.isNaN(startMinutes) ||
+        Number.isNaN(endMinutes)
+      ) {
+        toast.error("Please select valid start and end times for your short leave");
+        return;
+      }
+      if (endMinutes <= startMinutes) {
+        toast.error("Short leave end time must be after the start time");
+        return;
+      }
+      const diffMinutes = endMinutes - startMinutes;
+      if (diffMinutes % 30 !== 0) {
+        toast.error("Short leave hours must be in 30-minute increments");
+        return;
+      }
+      const calculatedHours = diffMinutes / 60;
+      const normalizedExpected = Math.round(hours * 2) / 2;
+      const normalizedCalculated = Math.round(calculatedHours * 2) / 2;
+      if (Math.abs(normalizedCalculated - normalizedExpected) > 0.001) {
+        toast.error("Selected hours must match the duration entered");
+        return;
+      }
       durationHoursValue = hours;
+      shortLeaveWindow = {
+        startTime: form.shortLeaveStartTime,
+        endTime: form.shortLeaveEndTime,
+      };
+    } else if (form.leaveType === "half") {
+      if (!form.halfDaySession) {
+        toast.error("Please choose whether the half day is in the first or second half");
+        return;
+      }
+      const allowed = new Set(halfDaySessionOptions.map((option) => option.value));
+      if (!allowed.has(form.halfDaySession)) {
+        toast.error("Select a valid half-day session");
+        return;
+      }
+      halfDaySessionValue = form.halfDaySession;
     }
     setSubmitting(true);
     try {
@@ -146,10 +260,19 @@ export default function LeaveRequests() {
         leaveReason: form.leaveReason,
         durationDays,
         durationHours: durationHoursValue,
+        shortLeaveWindow,
+        halfDaySession: halfDaySessionValue,
         teamLeadId: form.teamLeadId,
+        tasksDuringAbsence: form.tasksDuringAbsence.trim(),
+        backupStaff: {
+          name: form.backupStaffName.trim(),
+        },
       };
       await applyLeave(payload);
-      setForm((prev) => ({ ...initialForm, teamLeadId: prev.teamLeadId }));
+      setForm((prev) => ({
+        ...initialForm,
+        teamLeadId: prev.teamLeadId,
+      }));
       setDurationDays(null);
     } finally {
       setSubmitting(false);
@@ -178,7 +301,7 @@ export default function LeaveRequests() {
             </div>
             <div className="text-right text-xs text-muted-foreground">
               <p className="font-medium">{user?.fullName}</p>
-              <span>Employee ID: {user?.employeeId ?? "�?"}</span>
+              <span>Employee ID: {user?.employeeId ?? "?"}</span>
             </div>
           </div>
 
@@ -248,7 +371,7 @@ export default function LeaveRequests() {
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2">
                 <Label>Duration (days)</Label>
-                <Input value={durationDays ?? ""} readOnly placeholder="�?" />
+                <Input value={durationDays ?? ""} readOnly placeholder="?" />
               </div>
               {form.leaveType === "short" && (
                 <div className="space-y-2">
@@ -265,12 +388,60 @@ export default function LeaveRequests() {
                   <p className="text-xs text-muted-foreground">
                     Short leave is limited to a maximum of 2 hours.
                   </p>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <div className="space-y-2">
+                      <Label>Start time</Label>
+                      <Input
+                        type="time"
+                        step="1800"
+                        value={form.shortLeaveStartTime}
+                        onChange={handleChange("shortLeaveStartTime")}
+                        required={form.leaveType === "short"}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>End time</Label>
+                      <Input
+                        type="time"
+                        step="1800"
+                        value={form.shortLeaveEndTime}
+                        onChange={handleChange("shortLeaveEndTime")}
+                        required={form.leaveType === "short"}
+                      />
+                    </div>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Select the exact hours you will be away.
+                  </p>
+                </div>
+              )}
+              {form.leaveType === "half" && (
+                <div className="space-y-2">
+                  <Label>Half-day session</Label>
+                  <Select
+                    value={form.halfDaySession}
+                    onValueChange={(value) => handleChange("halfDaySession")(value)}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select session" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {halfDaySessionOptions.map((option) => (
+                        <SelectItem key={option.value} value={option.value}>
+                          {option.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground">
+                    Choose whether you will be away in the morning or afternoon.
+                  </p>
                 </div>
               )}
             </div>
 
             <div className="space-y-2">
-              <Label>Reason / notes</Label>
+              <Label>Application</Label>
               <textarea
                 value={form.leaveReason}
                 onChange={handleChange("leaveReason")}
@@ -278,6 +449,33 @@ export default function LeaveRequests() {
                 placeholder="Share context for the leave request"
                 className="min-h-[96px] w-full rounded-md border bg-background px-3 py-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary"
               />
+            </div>
+
+            <div className="space-y-2">
+              <Label>Tasks during absence</Label>
+              <textarea
+                value={form.tasksDuringAbsence}
+                onChange={handleChange("tasksDuringAbsence")}
+                required
+                placeholder="List the handovers, deadlines, or key updates your team lead should be aware of"
+                className="min-h-[96px] w-full rounded-md border bg-background px-3 py-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary"
+              />
+              <p className="text-xs text-muted-foreground">
+                Your team lead reviews this plan before approving the request.
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Primary backup colleague</Label>
+              <Input
+                value={form.backupStaffName}
+                onChange={handleChange("backupStaffName")}
+                required
+                placeholder="Name of the colleague covering while you are away"
+              />
+              <p className="text-xs text-muted-foreground">
+                Share who is handling urgent tasks during your leave.
+              </p>
             </div>
 
             <div className="space-y-2">
@@ -319,7 +517,7 @@ export default function LeaveRequests() {
                 </p>
               ) : (
                 <p className="text-xs text-muted-foreground">
-                  The selected lead completes this section before HR reviews the request.
+                  Your handover details above are sent to the selected lead for approval.
                 </p>
               )}
             </div>
@@ -330,7 +528,7 @@ export default function LeaveRequests() {
                 disabled={saving || submitting}
                 className="px-6"
               >
-                {saving || submitting ? "Submitting�?�" : "Submit leave"}
+                {saving || submitting ? "Submitting?" : "Submit leave"}
               </Button>
             </div>
           </form>
@@ -347,23 +545,23 @@ export default function LeaveRequests() {
           <ul className="mt-4 space-y-2 text-muted-foreground">
             <li>
               <span className="font-medium text-foreground">Name:</span>{" "}
-              {user?.fullName || "�?"}
+              {user?.fullName || "?"}
             </li>
             <li>
               <span className="font-medium text-foreground">Employee ID:</span>{" "}
-              {user?.employeeId || "�?"}
+              {user?.employeeId || "?"}
             </li>
             <li>
               <span className="font-medium text-foreground">Department:</span>{" "}
-              {user?.department || "�?"}
+              {user?.department || "?"}
             </li>
             <li>
               <span className="font-medium text-foreground">Branch:</span>{" "}
-              {user?.branch || "�?"}
+              {user?.branch || "?"}
             </li>
             <li>
               <span className="font-medium text-foreground">City:</span>{" "}
-              {user?.city || "�?"}
+              {user?.city || "?"}
             </li>
           </ul>
           <p className="mt-4 text-muted-foreground text-xs">
@@ -387,7 +585,7 @@ export default function LeaveRequests() {
             onClick={() => fetchLeaves().catch(() => {})}
             disabled={loading}
           >
-            {loading ? "Refreshing�?�" : "Refresh"}
+            {loading ? "Refreshing?" : "Refresh"}
           </Button>
         </div>
 
@@ -401,7 +599,8 @@ export default function LeaveRequests() {
                 </th>
                 <th className="px-4 py-3 text-left font-semibold">Duration</th>
                 <th className="px-4 py-3 text-left font-semibold">Category</th>
-                <th className="px-4 py-3 text-left font-semibold">Status</th>
+                <th className="px-4 py-3 text-left font-semibold">Team lead status</th>
+                <th className="px-4 py-3 text-left font-semibold">HR status</th>
                 <th className="px-4 py-3 text-left font-semibold">
                   Last remark
                 </th>
@@ -411,16 +610,16 @@ export default function LeaveRequests() {
               {loading ? (
                 <tr>
                   <td
-                    colSpan={6}
+                    colSpan={7}
                     className="px-4 py-6 text-center text-muted-foreground"
                   >
-                    Loading leave records�?�
+                    Loading leave records?
                   </td>
                 </tr>
               ) : leaves.length === 0 ? (
                 <tr>
                   <td
-                    colSpan={6}
+                    colSpan={7}
                     className="px-4 py-6 text-center text-muted-foreground"
                   >
                     No leave requests yet. Submit your first request above.
@@ -431,6 +630,10 @@ export default function LeaveRequests() {
                   const created = leave.createdAt
                     ? new Date(leave.createdAt)
                     : null;
+                  const teamLeadStatus = leave.teamLead?.status || "pending";
+                  const teamLeadStatusClass =
+                    teamLeadStatusTone[teamLeadStatus] ||
+                    "bg-slate-100 text-slate-700 border border-slate-200";
                   const statusClass =
                     statusTone[leave.status] ||
                     "bg-slate-100 text-slate-700 border border-slate-200";
@@ -451,24 +654,34 @@ export default function LeaveRequests() {
                       className="border-t border-white/5"
                     >
                       <td className="px-4 py-3">
-                        {created ? created.toLocaleString() : "�?"}
+                        {created ? created.toLocaleString() : "?"}
                       </td>
                       <td className="px-4 py-3">
                         {leave.fromDate
                           ? new Date(leave.fromDate).toLocaleDateString()
-                          : "�?"}{" "}
+                          : "?"}{" "}
                         -{" "}
                         {leave.toDate
                           ? new Date(leave.toDate).toLocaleDateString()
-                          : "�?"}
+                          : "?"}
                       </td>
                       <td className="px-4 py-3 text-muted-foreground">
                         {durationParts.length
-                          ? durationParts.join(" · ")
+                          ? durationParts.join(" / ")
                           : "Pending"}
                       </td>
                       <td className="px-4 py-3 capitalize text-muted-foreground">
                         {leave.leaveCategory}
+                      </td>
+                      <td className="px-4 py-3">
+                        <span
+                          className={cn(
+                            "inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium",
+                            teamLeadStatusClass
+                          )}
+                        >
+                          {teamLeadStatusLabel[teamLeadStatus] || teamLeadStatus}
+                        </span>
                       </td>
                       <td className="px-4 py-3">
                         <span

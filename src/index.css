@@ -118,3 +118,58 @@
     @apply bg-background text-foreground;
   }
 }
+
+@page {
+  margin: 0;
+}
+
+@media print {
+  body {
+    margin: 0;
+    background: #ffffff;
+  }
+  #root {
+    background: #ffffff;
+  }
+}
+
+
+
+/* Make print behave like the screen card, not a weird A4 layout */
+@media print {
+  /* Hide everything by default */
+  body * { visibility: hidden; }
+
+  /* Show only the card */
+  #employee-card, #employee-card * { visibility: visible; }
+
+  /* Keep colors/backgrounds (side bar, accents, etc.) */
+  * {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  /* Preserve the card’s exact size and layout */
+  #employee-card {
+    position: static;           /* don't stretch to edges */
+    width: 500px !important;
+    height: 660px !important;
+    margin: 0 auto !important;  /* center on the page */
+    box-shadow: none !important;
+    border: none !important;
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
+
+  /* Make sure the red sidebar actually prints red */
+  #employee-card aside {
+    background: #c8161f !important;
+  }
+
+  /* Optional: make the paper match the card size so there’s no scaling */
+  @page {
+    size: 5.21in 6.88in; /* 500x660px at 96dpi */
+    margin: 0;
+  }
+}
+

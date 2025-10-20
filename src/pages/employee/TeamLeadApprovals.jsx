@@ -1,11 +1,8 @@
 import React from "react";
 import { useAuth } from "@/context/AuthContext";
-import {
-  useLeaves,
-  leaveStatusOptions,
-} from "@/hooks/useLeaves";
+import { useNotifications } from "@/context/NotificationsContext";
+import { useLeaves, leaveStatusOptions } from "@/hooks/useLeaves";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
   Select,
@@ -22,12 +19,10 @@ import { toast } from "sonner";
 const teamLeadStatusOptions = [
   { value: "pending", label: "Pending review" },
   { value: "approved", label: "Approved" },
-  { value: "rejected", label: "Returned" },
+  { value: "rejected", label: "Rejected" },
 ];
 
 const emptyDraft = {
-  tasksDuringAbsence: "",
-  backupStaffName: "",
   remarks: "",
   status: "pending",
 };
@@ -57,6 +52,7 @@ const leaveStatusLookup = leaveStatusOptions.reduce((acc, option) => {
 
 export default function TeamLeadApprovals() {
   const { user, checkAuth } = useAuth();
+  const { lastEvent } = useNotifications();
   const isTeamLead = Boolean(user?.isTeamLead);
 
   const {
@@ -75,6 +71,17 @@ export default function TeamLeadApprovals() {
     if (!isTeamLead) return;
     fetchLeaves().catch(() => {});
   }, [fetchLeaves, isTeamLead]);
+
+  React.useEffect(() => {
+    if (!isTeamLead) return;
+    if (!lastEvent || lastEvent.type !== "leave:new") return;
+    const assigned = String(lastEvent.payload?.teamLeadAssignee || "");
+    const currentUserId = String(user?._id || user?.id || "");
+    if (assigned && currentUserId && assigned !== currentUserId) {
+      return;
+    }
+    fetchLeaves().catch(() => {});
+  }, [lastEvent, fetchLeaves, isTeamLead, user]);
 
   React.useEffect(() => {
     if (!isTeamLead) {
@@ -114,8 +121,6 @@ export default function TeamLeadApprovals() {
       return;
     }
     setDraft({
-      tasksDuringAbsence: selected.tasksDuringAbsence || "",
-      backupStaffName: selected.backupStaff?.name || "",
       remarks: selected.teamLead?.remarks || "",
       status: selected.teamLead?.status || "pending",
     });
@@ -131,10 +136,6 @@ export default function TeamLeadApprovals() {
     if (!selected) return;
 
     await updateLeaveAsTeamLead(selected._id || selected.id, {
-      tasksDuringAbsence: draft.tasksDuringAbsence || "",
-      backupStaff: {
-        name: draft.backupStaffName || "",
-      },
       teamLead: {
         remarks: draft.remarks || "",
         status: draft.status || "pending",
@@ -190,7 +191,7 @@ export default function TeamLeadApprovals() {
         <div>
           <h1 className="text-2xl font-semibold text-foreground">Team lead reviews</h1>
           <p className="text-sm text-muted-foreground">
-            Update cover plans and approve requests before they reach HR.
+            Review employee handover plans and approve requests before they reach HR.
           </p>
         </div>
         <div className="flex gap-2">
@@ -261,7 +262,7 @@ export default function TeamLeadApprovals() {
                               ? "Needs action"
                               : leadStatus === "approved"
                               ? "Approved"
-                              : "Returned"}
+                              : "Rejected"}
                           </p>
                           <p className="text-[10px] uppercase text-muted-foreground">
                             HR: {overallStatus || "Pending"}
@@ -314,27 +315,29 @@ export default function TeamLeadApprovals() {
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="tasksDuringAbsence">Tasks during absence</Label>
-                  <textarea
-                    id="tasksDuringAbsence"
-                    value={draft.tasksDuringAbsence}
-                    onChange={handleDraftChange("tasksDuringAbsence")}
-                    placeholder="List critical handovers or cover instructions"
-                    className="min-h-[96px] w-full rounded-md border bg-background px-3 py-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary"
-                  />
+                  <Label>Tasks during absence</Label>
+                  <div className="min-h-[96px] whitespace-pre-wrap rounded-md border bg-muted/40 px-3 py-2 text-sm text-foreground">
+                    {selected.tasksDuringAbsence
+                      ? selected.tasksDuringAbsence
+                      : "Not provided"}
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Supplied by the employee when the request was submitted.
+                  </p>
                 </div>
 
                 <div className="space-y-2">
                   <Label>Primary backup colleague</Label>
-                  <Input
-                    value={draft.backupStaffName}
-                    onChange={handleDraftChange("backupStaffName")}
-                    placeholder="Name of colleague covering"
-                  />
+                  <div className="rounded-md border bg-muted/40 px-3 py-2 text-sm text-foreground">
+                    {selected.backupStaff?.name || "Not provided"}
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Employee-identified coverage for urgent work.
+                  </p>
                 </div>
 
                 <div className="space-y-2">
-                  <Label>Team lead remarks</Label>
+                  <Label>Team lead recommendation</Label>
                   <textarea
                     value={draft.remarks}
                     onChange={handleDraftChange("remarks")}
